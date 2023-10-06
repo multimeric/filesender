@@ -1,6 +1,6 @@
 from typing import List, Optional, Tuple
 from typing_extensions import Annotated, TypeVar
-from filesender.api import create_guest, create_transfer, update_transfer, upload_chunk, update_file, get_server_info
+from filesender.api import create_guest, create_transfer, describe_transfer, update_transfer, upload_chunk, update_file, get_server_info, download_files
 import filesender.request_types as request
 from typer import Typer, Option, Argument
 from rich import print
@@ -51,7 +51,6 @@ def invite(base_url: OptionStr, username: OptionStr, apikey: OptionStr, recipien
 
 @app.command(context_settings=context)
 def upload(files: Annotated[List[Path], Argument(file_okay=True, dir_okay=False, resolve_path=True, exists=True)], base_url: OptionStr, username: OptionStr, apikey: OptionStr, recipients: Annotated[List[str], Option()]):
-    info = get_server_info(base_url)
     files_by_name = {
         path.name: path for path in files
     }
@@ -101,26 +100,14 @@ def upload(files: Annotated[List[Path], Argument(file_okay=True, dir_okay=False,
     )
     print(transfer)
 
-# @main.command(context_settings={"default_map": ConfigFileProcessor.read_config()})
-# @click.argument("files", type=click.Path(exists=True), nargs=-1)
-# @verbose
-# @insecure
-# @progress
-# @click.option("-s", "--subject")
-# @click.option("-m", "--message")
-# @click.option("--threads", type=int)
-# @click.option("--timeout", type=int)
-# @click.option("--retries", type=int)
-# @click.option("-u", "--username")
-# @click.option("-a", "--apikey")
-# @click.option("-r", "--recipients", required=True)
-# @click.option("-f", "--from_address", help="filesender email from address", required=True)
-# def upload(files: List[str], verbose: bool, insecure: bool, progress: bool, subject: str, message: str, guest: bool, threads: int, timeout: int, retries: int, username: str, apikey: str, recipients: str, from_address: str):
-#     pass
+@app.command(context_settings=context)
+def download(base_url: OptionStr, username: OptionStr, apikey: OptionStr, download_url: Optional[str], token: Optional[str], file_ids: Optional[List[str]] = None):
+    # transfer = describe_transfer(base_url=base_url, transfer_id=transfer_id, user_name=username, api_key=apikey)
+    if download_url:
+        pass
 
-# @main.command()
-# def download():
-#     pass
+    download_files(base_url=base_url, api_key=apikey, user_name=username, file_ids=[file["id"] for file in transfer["files"]])
+    print()
 
 if __name__ == "__main__":
     app()

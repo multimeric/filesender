@@ -1,3 +1,4 @@
+from typing import List
 import requests
 import filesender.response_types as response
 import filesender.request_types as request
@@ -8,7 +9,6 @@ import time
 from typing_extensions import Self, TypedDict, Unpack
 from urllib.parse import urlparse, urlunparse, unquote
 from io import IOBase
-from contextlib import contextmanager
 
 def raise_status(response: Response):
     try:
@@ -51,24 +51,25 @@ class FileSenderRequest(Request):
         signature.update(self.method.lower().encode())
         signature.update(b"&")
         signature.update(self.url_without_scheme().encode())
-        signature.update(b"&")
 
         prepared = self.prepare()
         if prepared.body is None:
             pass
-        elif isinstance(prepared.body, str):
-            signature.update(prepared.body.encode())
-        elif isinstance(prepared.body, bytes):
-            signature.update(prepared.body)
-        elif isinstance(prepared.body, IOBase):
-            while True:
-                chunk = prepared.body.read(1024)
-                if not chunk:
-                    break
-                signature.update(chunk.encode())
-            prepared.body.seek(0)
         else:
-            raise Exception("Unknown body type")
+            signature.update(b"&")
+            if isinstance(prepared.body, str):
+                signature.update(prepared.body.encode())
+            elif isinstance(prepared.body, bytes):
+                signature.update(prepared.body)
+            elif isinstance(prepared.body, IOBase):
+                while True:
+                    chunk = prepared.body.read(1024)
+                    if not chunk:
+                        break
+                    signature.update(chunk.encode())
+                prepared.body.seek(0)
+            else:
+                raise Exception("Unknown body type")
 
         self.params["signature"] = signature.hexdigest()
         return self
@@ -85,8 +86,11 @@ class FileSenderRequest(Request):
 def list_my_transfers(base_url: str):
     return requests.get(f"{base_url}/transfer").json()
 
-def describe_transfer(base_url: str, transfer_id: str):
-    return requests.get(f"{base_url}/transfer/{transfer_id}").json()
+def describe_transfer(base_url: str, transfer_id: int, **kwargs: Unpack[CommonAndSignature]) -> response.Transfer:
+    return FileSenderRequest(
+        "GET",
+        f"{base_url}/transfer/{transfer_id}"
+    ).sign(**kwargs).send().json()
 
 def create_transfer(
     body: request.Transfer,
@@ -155,3 +159,17 @@ def get_server_info(base_url: str) -> dict:
         "GET",
         f"{base_url}/info",
     ).send().json()
+
+def download_files(file_ids: List[int], token: str, **kwargs: Unpack[CommonAndSignature]):
+    #  https://filesender.aarnet.edu.au/download.php?token=e3ddb230-b8ae-41c7-a09e-857cd5c33306&files_ids=20594826
+
+    url_without_path = urlunparse(urlparse(kwargs["base_url"])._replace(path=""))
+    res = FileSenderRequest(
+        "GET",
+        f"{url_without_path}/download.php",
+        params={
+            "files_ids": file_ids,
+            "token": token
+        }
+    ).send()
+    print()
