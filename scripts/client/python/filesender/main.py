@@ -1,21 +1,13 @@
-import click
 from typing import List, Optional, Tuple
 from typing_extensions import Annotated, TypeVar
-from filesender.config import ConfigFileProcessor
-from filesender.api import create_guest
+from filesender.api import create_guest, create_transfer, update_transfer, upload_chunk, update_file, get_server_info
 import filesender.request_types as request
 from typer import Typer, Option, Argument
 from rich import print
-from typer_config import ini_loader, use_config, conf_callback_factory
-from typer_config.loaders import loader_transformer
 from pathlib import Path
 from configparser import ConfigParser
-from functools import cache
 
 OptionStr = Annotated[str, Option()]
-
-def sign_request() -> dict:
-    
 
 def get_defaults() -> dict:
     defaults = {}
@@ -34,22 +26,80 @@ def get_defaults() -> dict:
 
     return defaults
 
-app = Typer(context_settings={
+context = {
     "default_map": get_defaults()
-})
+}
+app = Typer()
 
 # BaseUrl = Annotated[str, Option(default_factory=lambda: get_config_parser().get("system", "base_url"))]
 # DefaultTransferDaysValid = Annotated[int, Option(default_factory=lambda: get_config_parser().getint("system", "base_url", fallback=10))]
 # UserName = Annotated[str, Option(default_factory=lambda: get_config_parser().get("user", "username", fallback=None))]
 # ApiKey = Annotated[str, Option(default_factory=lambda: get_config_parser().get("user", "apikey", fallback=None))]
 
-@app.command()
-def invite_guest(base_url: OptionStr, username: OptionStr, recipient: OptionStr):
+@app.command(context_settings=context)
+def invite(base_url: OptionStr, username: OptionStr, apikey: OptionStr, recipient: OptionStr):
     body: request.Guest = {
         "from": username,
         "recipient": recipient
     }
-    print(create_guest(base_url, body))
+    print(create_guest(
+        base_url=base_url,
+        user_name=username,
+        api_key=apikey,
+        body=body,
+    ))
+
+@app.command(context_settings=context)
+def upload(files: Annotated[List[Path], Argument(file_okay=True, dir_okay=False, resolve_path=True, exists=True)], base_url: OptionStr, username: OptionStr, apikey: OptionStr, recipients: Annotated[List[str], Option()]):
+    info = get_server_info(base_url)
+    files_by_name = {
+        path.name: path for path in files
+    }
+
+    transfer = create_transfer(
+        base_url=base_url,
+        api_key=apikey,
+        user_name=username,
+        body={
+            "files": [{
+                "name": file.name,
+                "size": file.stat().st_size
+            } for file in files],
+            "from": username,
+            "recipients": recipients
+        }
+    )
+    for file in transfer["files"]:
+        with files_by_name[file["name"]].open("rb") as fp:
+            upload_chunk(
+                file_id=file["id"],
+                api_key=apikey,
+                base_url=base_url,
+                user_name=username,
+                chunk=fp,
+                offset=0
+            )
+            update_file(
+                file_id=file["id"],
+                api_key=apikey,
+                base_url=base_url,
+                user_name=username,
+                body={
+                    "complete": True
+                }
+            )
+
+            
+    transfer = update_transfer(
+        base_url=base_url,
+        user_name=username,
+        api_key=apikey,
+        transfer_id=transfer["id"],
+        body={
+            "complete": True
+        }
+    )
+    print(transfer)
 
 # @main.command(context_settings={"default_map": ConfigFileProcessor.read_config()})
 # @click.argument("files", type=click.Path(exists=True), nargs=-1)
